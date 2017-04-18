@@ -1,0 +1,18 @@
+{
+    "version": "0.1.0",
+    "summary": "Access MIDI devices using the Web MIDI API.",
+    "repository": "https://github.com/bluekeyes/elm-webmidi.git",
+    "license": "BSD3",
+    "source-directories": [
+        "src"
+    ],
+    "exposed-modules": [
+        "WebMidi",
+        "WebMidi.LowLevel"
+    ],
+    "native-modules": true,
+    "dependencies": {
+        "elm-lang/core": "5.0.0 <= v < 6.0.0"
+    },
+    "elm-version": "0.18.0 <= v < 0.19.0"
+}

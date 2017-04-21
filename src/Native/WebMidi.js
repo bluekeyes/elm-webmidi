@@ -23,18 +23,30 @@ var _bluekeyes$elm_webmidi$Native_WebMidi = (function () {
     });
   }
 
+  function strToType(str) {
+    return { ctor: str.charAt(0).toUpperCase() + str.slice(1) };
+  }
+
+  function portDetails(port) {
+    port = port._0;
+    return {
+      ctor: 'PortDetails',
+      id: port.id,
+      manufacturer: port.manufacturer || '',
+      name: port.name || '',
+      version: port.version || '',
+      state: strToType(port.state),
+      connection: strToType(port.connection),
+    };
+  }
+
   function inputs(access) {
-    return _elm_lang$core$Native_Scheduler.nativeBinding(function (callback) {
-      let inputs = _elm_lang$core$Native_List.Nil
-      for (let input of access.inputs.values()) {
-        inputs = _elm_lang$core$Native_List.Cons(input.name, inputs);
-      }
-      callback(_elm_lang$core$Native_Scheduler.succeed(inputs));
-    });
+    return _elm_lang$core$Native_List.fromArray(Array.from(access.inputs.values()));
   }
 
   return {
     requestAccess: requestAccess,
+    portDetails: portDetails,
     inputs: inputs,
   };
 

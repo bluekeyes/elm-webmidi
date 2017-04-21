@@ -1,18 +1,26 @@
 module WebMidi.LowLevel exposing
     ( MidiAccess
-    , BadAccess
+    , Options
+    , MidiInput, MidiOutput, MidiPort(..), PortDetails
+    , DeviceState(..), ConnectionState(..)
     , requestAccess
+    , portDetails
     , inputs
+    , BadAccess(..)
     )
 
 
 {-| Low-level access for the Web MIDI API.
 
-# Types
-@docs MidiAccess, BadAccess
+# Access
+@docs MidiAccess, Options, BadAccess
+
+# Ports
+@docs MidiInput, MidiOutput, MidiPort
+@docs PortDetails, DeviceState, ConnectionState
 
 # Functions
-@docs requestAccess, inputs
+@docs requestAccess, portDetails,inputs
 
 -}
 
@@ -42,14 +50,62 @@ type BadAccess
     | BadSupport
 
 
+{-| Options for requesting MIDI access.
+-}
 type alias Options =
     { sysex : Bool
     , software : Bool
     }
 
 
+{-| The state of the MIDI device attached to a port.
+-}
+type DeviceState = Disconnected | Connected
+
+
+{-| The state of a connection on a MIDI port.
+-}
+type ConnectionState = Open | Closed | Pending
+
+
+{-| Information about a MIDI port (input or output)
+-}
+type alias PortDetails =
+    { id : String
+    , manufacturer : String
+    , name : String
+    , version : String
+    , state : DeviceState
+    , connection : ConnectionState
+    }
+
+
+{-| An opaque type for input ports.
+-}
+type MidiInput = MidiInput
+
+
+{-| An opaque type for output ports.
+-}
+type MidiOutput = MidiOutput
+
+
+{-| A MIDI port.
+-}
+type MidiPort
+    = Input MidiInput
+    | Output MidiOutput
+
+
+{-| Returns details about a MIDI port.
+-}
+portDetails : MidiPort -> PortDetails
+portDetails =
+    Native.WebMidi.portDetails
+
+
 {-| Lists the available inputs.
 -}
-inputs : MidiAccess -> Task Never (List String)
+inputs : MidiAccess -> List MidiInput
 inputs =
     Native.WebMidi.inputs

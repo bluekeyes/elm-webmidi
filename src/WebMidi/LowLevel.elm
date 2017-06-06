@@ -3,9 +3,11 @@ module WebMidi.LowLevel exposing
     , Options
     , MidiInput, MidiOutput, MidiPort(..), PortDetails
     , DeviceState(..), ConnectionState(..)
+    , MidiMessage(..)
     , requestAccess
     , portDetails
     , inputs
+    , listen
     , BadAccess(..)
     )
 
@@ -19,14 +21,20 @@ module WebMidi.LowLevel exposing
 @docs MidiInput, MidiOutput, MidiPort
 @docs PortDetails, DeviceState, ConnectionState
 
+# Messages
+@docs MidiMessage
+
 # Functions
-@docs requestAccess, portDetails,inputs
+@docs requestAccess, portDetails, inputs, listen
 
 -}
 
 
-import Native.WebMidi
+import Array exposing (Array)
 import Task exposing (Task)
+import Time exposing (Time)
+
+import Native.WebMidi
 
 
 {-| Provides access to MIDI inputs and outputs.
@@ -109,3 +117,16 @@ portDetails =
 inputs : MidiAccess -> List MidiInput
 inputs =
     Native.WebMidi.inputs
+
+{-| A generic MIDI message.
+-}
+type MidiMessage
+    = Channel Int Int Int
+    | System Int Int Int
+    | SysEx (Array Int)
+
+{-| Listens for messages on an input.
+-}
+listen : (Time -> MidiMessage -> Task Never a) -> MidiInput -> ()
+listen =
+    Native.WebMidi.listen

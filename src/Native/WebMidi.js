@@ -44,10 +44,42 @@ var _bluekeyes$elm_webmidi$Native_WebMidi = (function () {
     return _elm_lang$core$Native_List.fromArray(Array.from(access.inputs.values()));
   }
 
+  function listen(onMessage, input) {
+    input.onmidimessage = function (event) {
+      var time = _elm_lang$core$Time$millisecond * event.timeStamp;
+      var data = event.data;
+
+      var msg;
+      if (data[0] & 0xF0 === 0xF0) {
+        if (data[0] & 0x0F === 0x00) {
+          msg = {
+            ctor: 'SysEx',
+            _0: _elm_lang$core$Native_Array.initialize(data.length, function (i) {
+              return data[i];
+            }),
+          };
+        } else {
+          msg = {
+            ctor: 'System',
+            _0: data[0], _1: data[1], _2: data[2],
+          };
+        }
+      } else {
+        msg = {
+          ctor: 'Channel',
+          _0: data[0], _1: data[1], _2: data[2],
+        };
+      }
+
+      _elm_lang$core$Native_Scheduler.rawSpawn(A2(onMessage, time, msg));
+    };
+  }
+
   return {
     requestAccess: requestAccess,
     portDetails: portDetails,
     inputs: inputs,
+    listen: F2(listen),
   };
 
 })();

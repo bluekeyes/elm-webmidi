@@ -11,53 +11,46 @@ effect module WebMidi where { command = MidiCmd, subscription = MidiSub } exposi
 -}
 
 import Process
-import Maybe exposing (Maybe(..))
 import Task exposing (Task)
+import Maybe exposing (Maybe(..))
 
-import WebMidi.LowLevel
+import WebMidi.LowLevel as LowLevel
 import WebMidi.Event exposing (Event)
 
 
 -- COMANDS
 
 type MidiCmd msg
-    = None
+    = Inputs (List String -> msg)
 
 
 cmdMap : (a -> b) -> MidiCmd a -> MidiCmd b
 cmdMap func cmd =
     case cmd of
-        None -> None
+        Inputs tagger ->
+            Inputs (tagger >> func)
 
+
+{-| Get the connected MIDI inputs.
+
+If no inputs are connected or MIDI access is not available, the list is empty.
+-}
+inputs : (List String -> msg) -> Cmd msg
+inputs tagger =
+    command (Inputs tagger)
 
 
 -- SUBSCRIPTIONS
 
 type MidiSub msg
-    = Inputs (List String -> msg)
-    | Listen String (Event -> msg)
+    = Listen String (Event -> msg)
 
 
 subMap : (a -> b) -> MidiSub a -> MidiSub b
 subMap func sub =
     case sub of
-        Inputs tagger ->
-            Inputs (tagger >> func)
-
         Listen input tagger ->
             Listen input (tagger >> func)
-
-
-{-| Get notified when input devices are connected or disconnected.
-
-An event is sent each time a device connects or disconnects and contains a full
-list of connected device names. The current devices are also sent when the
-subscription is created.
--}
-inputs : (List String -> msg) -> Sub msg
-inputs tagger =
-    subscription (Inputs tagger)
-
 
 
 {-| Listen for MIDI events on an input.
@@ -69,23 +62,118 @@ listen input tagger =
 
 -- MANAGER
 
-type alias State =
-    { access : Maybe WebMidi.LowLevel.MidiAccess
+type alias State msg =
+    { access : Maybe (Access msg)
+    , inputs : List String
     }
 
-init : Task Never State
+
+type Access msg
+    = Unavailable
+    | Requesting Process.Id (List (Maybe LowLevel.MidiAccess -> msg))
+    | Available LowLevel.MidiAccess
+
+
+init : Task Never (State msg)
 init =
-    Task.succeed { access = Nothing }
+    Task.succeed (State Nothing [])
 
 
-onEffects : Platform.Router msg Msg -> List (MidiCmd msg) -> List (MidiSub msg) -> State -> Task Never State
+-- HANDLE APP MESSAGES
+
+{- Discards the result of a task and succeeds with a given value.
+-}
+andThenReturn val t = Task.andThen (\_ -> Task.succeed val) t
+
+
+onEffects : Platform.Router msg Msg -> List (MidiCmd msg) -> List (MidiSub msg) -> State msg -> Task Never (State msg)
 onEffects router cmds subs state =
-    Task.succeed state
+    runCommands router cmds state
+
+
+runCommands : Platform.Router msg Msg -> List (MidiCmd msg) -> State msg -> Task Never (State msg)
+runCommands router cmds state =
+    case cmds of
+        [] ->
+            Task.succeed state
+
+        Inputs tagger :: rest ->
+            let
+                getAndTagInputs = tagger << Maybe.withDefault [] << Maybe.map getInputNames
+            in
+                withAccess state router getAndTagInputs
+                    |> Task.andThen (\newState -> runCommands router rest newState)
+
+
+withAccess : State msg -> Platform.Router msg Msg -> (Maybe LowLevel.MidiAccess -> msg) -> Task Never (State msg)
+withAccess state router action =
+    let
+        runAction = action >> Platform.sendToApp router >> andThenReturn state
+    in
+        case state.access of
+            Nothing ->
+                requestAccess router
+                    |> Task.andThen (\pid -> Task.succeed { state |
+                        access = Just (Requesting pid [action])
+                    })
+
+            Just (Requesting pid pending) ->
+                Task.succeed { state |
+                    access = Just (Requesting pid (action :: pending))
+                }
+
+            Just (Unavailable) ->
+                runAction (Nothing)
+
+            Just (Available access) ->
+                runAction (Just access)
+
+
+requestAccess : Platform.Router msg Msg -> Task x Process.Id
+requestAccess router =
+    let
+        goodAccess access =
+            Platform.sendToSelf router (ReceiveAccess (Just access))
+
+        badAccess _ =
+            Platform.sendToSelf router (ReceiveAccess Nothing)
+
+        attemptAccess =
+            LowLevel.requestAccess { sysex = False, software = False }
+                |> Task.andThen goodAccess
+                |> Task.onError badAccess
+    in
+        Process.spawn attemptAccess
+
+
+getInputNames : LowLevel.MidiAccess -> List String
+getInputNames access =
+    let
+        getName input = (LowLevel.portDetails (LowLevel.Input input)) |> .name
+    in
+        List.map getName (LowLevel.inputs access)
+
+
+-- HANDLE SELF MESSAGES
 
 
 type Msg
-    = ReceiveInputs (List String)
+    = ReceiveAccess (Maybe LowLevel.MidiAccess)
 
-onSelfMsg : Platform.Router msg Msg -> Msg -> State -> Task Never State
+
+onSelfMsg : Platform.Router msg Msg -> Msg -> State msg -> Task Never (State msg)
 onSelfMsg router selfMsg state =
-    Task.succeed state
+    case selfMsg of
+        ReceiveAccess maybeAccess ->
+            let
+                runPending =
+                    case state.access of
+                        Just (Requesting _ pending) ->
+                            Task.sequence (List.map (\action -> Platform.sendToApp router (action maybeAccess)) pending)
+
+                        _ ->
+                            Task.succeed [()]
+
+                newAccess = Just (Maybe.withDefault Unavailable (Maybe.map Available maybeAccess))
+            in
+                runPending |> andThenReturn { state | access = newAccess }

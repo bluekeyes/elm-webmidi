@@ -63,20 +63,20 @@ listen input tagger =
 -- MANAGER
 
 type alias State msg =
-    { access : Maybe (Access msg)
+    { access : Access msg
     , inputs : List String
     }
 
 
 type Access msg
-    = Unavailable
+    = Unknown
     | Requesting Process.Id (List (Maybe LowLevel.MidiAccess -> msg))
-    | Available LowLevel.MidiAccess
+    | Known (Maybe LowLevel.MidiAccess)
 
 
 init : Task Never (State msg)
 init =
-    Task.succeed (State Nothing [])
+    Task.succeed (State Unknown [])
 
 
 -- HANDLE APP MESSAGES
@@ -107,26 +107,20 @@ runCommands router cmds state =
 
 withAccess : State msg -> Platform.Router msg Msg -> (Maybe LowLevel.MidiAccess -> msg) -> Task Never (State msg)
 withAccess state router action =
-    let
-        runAction = action >> Platform.sendToApp router >> andThenReturn state
-    in
-        case state.access of
-            Nothing ->
-                requestAccess router
-                    |> Task.andThen (\pid -> Task.succeed { state |
-                        access = Just (Requesting pid [action])
-                    })
-
-            Just (Requesting pid pending) ->
+    case state.access of
+        Unknown ->
+            requestAccess router |> Task.andThen (\pid ->
                 Task.succeed { state |
-                    access = Just (Requesting pid (action :: pending))
-                }
+                    access = Requesting pid [action]
+                })
 
-            Just (Unavailable) ->
-                runAction (Nothing)
+        Requesting pid pending ->
+            Task.succeed { state |
+                access = Requesting pid (action :: pending)
+            }
 
-            Just (Available access) ->
-                runAction (Just access)
+        Known access ->
+            action access |> Platform.sendToApp router |> andThenReturn state
 
 
 requestAccess : Platform.Router msg Msg -> Task x Process.Id
@@ -164,16 +158,14 @@ type Msg
 onSelfMsg : Platform.Router msg Msg -> Msg -> State msg -> Task Never (State msg)
 onSelfMsg router selfMsg state =
     case selfMsg of
-        ReceiveAccess maybeAccess ->
+        ReceiveAccess access ->
             let
                 runPending =
                     case state.access of
-                        Just (Requesting _ pending) ->
-                            Task.sequence (List.map (\action -> Platform.sendToApp router (action maybeAccess)) pending)
+                        Requesting _ pending ->
+                            Task.sequence (List.map (\action -> Platform.sendToApp router (action access)) pending)
 
                         _ ->
                             Task.succeed [()]
-
-                newAccess = Just (Maybe.withDefault Unavailable (Maybe.map Available maybeAccess))
             in
-                runPending |> andThenReturn { state | access = newAccess }
+                runPending |> andThenReturn { state | access = Known access }

@@ -70,7 +70,7 @@ type alias State msg =
 
 type Access msg
     = Unknown
-    | Requesting Process.Id (List (Maybe LowLevel.MidiAccess -> msg))
+    | Requesting Process.Id (List (Maybe LowLevel.MidiAccess -> Task Never ()))
     | Known (Maybe LowLevel.MidiAccess)
 
 
@@ -89,6 +89,7 @@ andThenReturn val t = Task.andThen (\_ -> Task.succeed val) t
 onEffects : Platform.Router msg Msg -> List (MidiCmd msg) -> List (MidiSub msg) -> State msg -> Task Never (State msg)
 onEffects router cmds subs state =
     runCommands router cmds state
+        |> Task.andThen (runSubscriptions router subs)
 
 
 runCommands : Platform.Router msg Msg -> List (MidiCmd msg) -> State msg -> Task Never (State msg)
@@ -100,12 +101,23 @@ runCommands router cmds state =
         Inputs tagger :: rest ->
             let
                 getAndTagInputs = tagger << Maybe.withDefault [] << Maybe.map getInputNames
+                sendInputs = Platform.sendToApp router << getAndTagInputs
             in
-                withAccess state router getAndTagInputs
-                    |> Task.andThen (\newState -> runCommands router rest newState)
+                withAccess state router sendInputs
+                    |> Task.andThen (runCommands router rest)
 
 
-withAccess : State msg -> Platform.Router msg Msg -> (Maybe LowLevel.MidiAccess -> msg) -> Task Never (State msg)
+runSubscriptions : Platform.Router msg Msg -> List (MidiSub msg) -> State msg -> Task Never (State msg)
+runSubscriptions router subs state =
+    case subs of
+        [] ->
+            Task.succeed state
+
+        Listen name tagger :: rest ->
+            Task.succeed state
+
+
+withAccess : State msg -> Platform.Router msg Msg -> (Maybe LowLevel.MidiAccess -> Task Never ()) -> Task Never (State msg)
 withAccess state router action =
     case state.access of
         Unknown ->
@@ -120,7 +132,7 @@ withAccess state router action =
             }
 
         Known access ->
-            action access |> Platform.sendToApp router |> andThenReturn state
+            action access |> andThenReturn state
 
 
 requestAccess : Platform.Router msg Msg -> Task x Process.Id
@@ -163,7 +175,7 @@ onSelfMsg router selfMsg state =
                 runPending =
                     case state.access of
                         Requesting _ pending ->
-                            Task.sequence (List.map (\action -> Platform.sendToApp router (action access)) pending)
+                            Task.sequence (List.map (\action -> action access) pending)
 
                         _ ->
                             Task.succeed [()]

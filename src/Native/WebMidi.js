@@ -27,6 +27,112 @@ var _bluekeyes$elm_webmidi$Native_WebMidi = (function () {
     return { ctor: str.charAt(0).toUpperCase() + str.slice(1) };
   }
 
+  function channelMsg(data) {
+    const chan = (data[0] & 0xF0) + 1;
+    switch (data[0] & 0xF0) {
+      case 0x80:
+        return {
+          ctor: 'NoteOff',
+          _0: chan,
+          _1: data[1],
+          _2: data[2],
+        };
+      case 0x90:
+        return {
+          ctor: 'NoteOn',
+          _0: chan,
+          _1: data[1],
+          _2: data[2],
+        };
+      case 0xA0:
+        return {
+          ctor: 'KeyPressure',
+          _0: chan,
+          _1: data[1],
+          _2: data[2],
+        };
+      case 0xB0:
+        return {
+          ctor: 'ControlChange',
+          _0: chan,
+          _1: data[1],
+          _2: data[2],
+        };
+      case 0xC0:
+        return {
+          ctor: 'ProgramChange',
+          _0: chan,
+          _1: data[1],
+        };
+      case 0xD0:
+        return {
+          ctor: 'ChannelPressure',
+          _0: chan,
+          _1: data[1],
+        };
+      case 0xE0:
+        return {
+          ctor: 'PitchBend',
+          _0: chan,
+          _1: (data[2] << 7) | data[1],
+        };
+    }
+  }
+
+  function systemMsg(data) {
+    switch (data[0] & 0x0F) {
+      case 0x0:
+        return {
+          ctor: 'SysEx',
+          _0: _elm_lang$core$Native_List.fromArray(data.slice(1)),
+        };
+      case 0x1:
+        return {
+          ctor: 'TimeCodeQuarterFrame',
+          _0: (data[1] >> 4) & 0x70,
+          _1: data[1] & 0x0F,
+        };
+      case 0x2:
+        return {
+          ctor: 'SongPosition',
+          _0: (data[2] << 7) | data[1],
+        };
+      case 0x3:
+        return {
+          ctor: 'SongSelect',
+          _0: data[1],
+        };
+      case 0x6:
+        return {
+          ctor: 'TuneRequest',
+        };
+      case 0x8:
+        return {
+          ctor: 'TimingClock',
+        };
+      case 0xA:
+        return {
+          ctor: 'StartSequence',
+        };
+      case 0xB:
+        return {
+          ctor: 'ContinueSequence',
+        };
+      case 0xC:
+        return {
+          ctor: 'StopSequence',
+        };
+      case 0xE:
+        return {
+          ctor: 'ActiveSensing',
+        };
+      case 0xF:
+        return {
+          ctor: 'Reset',
+        };
+    }
+  }
+
   function portDetails(port) {
     port = port._0;
     return {
@@ -44,35 +150,21 @@ var _bluekeyes$elm_webmidi$Native_WebMidi = (function () {
     return _elm_lang$core$Native_List.fromArray(Array.from(access.inputs.values()));
   }
 
-  function listen(onMessage, input) {
-    input.onmidimessage = function (event) {
-      var time = _elm_lang$core$Time$millisecond * event.timeStamp;
-      var data = event.data;
+  function listen(input, onMessage) {
+    return _elm_lang$core$Native_Scheduler.nativeBinding(function (callback) {
+      input.onmidimessage = function (event) {
+        const time = _elm_lang$core$Time$millisecond * event.timeStamp;
+        const msg = (event.data & 0xF0) === 0xF0 ? systemMsg(event.data) : channelMsg(event.data);
 
-      var msg;
-      if (data[0] & 0xF0 === 0xF0) {
-        if (data[0] & 0x0F === 0x00) {
-          msg = {
-            ctor: 'SysEx',
-            _0: _elm_lang$core$Native_Array.initialize(data.length, function (i) {
-              return data[i];
-            }),
-          };
-        } else {
-          msg = {
-            ctor: 'System',
-            _0: data[0], _1: data[1], _2: data[2],
-          };
-        }
-      } else {
-        msg = {
-          ctor: 'Channel',
-          _0: data[0], _1: data[1], _2: data[2],
-        };
-      }
+        _elm_lang$core$Native_Scheduler.rawSpawn(onMessage({
+          ctor: 'Event',
+          time: time,
+          message: msg,
+        }));
+      };
 
-      _elm_lang$core$Native_Scheduler.rawSpawn(A2(onMessage, time, msg));
-    };
+      callback(_elm_lang$core$Native_Scheduler.succeed());
+    });
   }
 
   return {

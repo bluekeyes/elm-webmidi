@@ -28,6 +28,7 @@ type alias Channel = Int
 {-| A MIDI message.
 -}
 type Message
+    {- channel messages -}
     = NoteOff Channel Int Int
     | NoteOn Channel Int Int
     | KeyPressure Channel Int Int
@@ -35,3 +36,16 @@ type Message
     | ProgramChange Channel Int
     | ChannelPressure Channel Int
     | PitchBend Channel Int
+
+    {- system messages -}
+    | SysEx (List Int)
+    | TimeCodeQuarterFrame Int Int
+    | SongPosition Int
+    | SongSelect Int
+    | TuneRequest
+    | TimingClock
+    | StartSequence
+    | ContinueSequence
+    | StopSequence
+    | ActiveSensing
+    | Reset

@@ -28,7 +28,7 @@ var _bluekeyes$elm_webmidi$Native_WebMidi = (function () {
   }
 
   function channelMsg(data) {
-    const chan = (data[0] & 0xF0) + 1;
+    const chan = (data[0] & 0x0F) + 1;
     switch (data[0] & 0xF0) {
       case 0x80:
         return {

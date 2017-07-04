@@ -1,24 +1,28 @@
-effect module WebMidi where { command = MidiCmd, subscription = MidiSub } exposing
-    ( inputs
-    , listen
-    )
+effect module WebMidi
+    where { command = MidiCmd, subscription = MidiSub }
+    exposing
+        ( inputs
+        , listen
+        )
 
 {-| Send and receive MIDI messages.
 
+
 # Receiving MIDI
+
 @docs inputs, listen
 
 -}
 
+import Maybe exposing (Maybe(..))
 import Process
 import Task exposing (Task)
-import Maybe exposing (Maybe(..))
-
-import WebMidi.LowLevel as LowLevel
 import WebMidi.Event exposing (Event)
+import WebMidi.LowLevel as LowLevel
 
 
 -- COMANDS
+
 
 type MidiCmd msg
     = Inputs (List String -> msg)
@@ -34,13 +38,16 @@ cmdMap func cmd =
 {-| Get the connected MIDI inputs.
 
 If no inputs are connected or MIDI access is not available, the list is empty.
+
 -}
 inputs : (List String -> msg) -> Cmd msg
 inputs tagger =
     command (Inputs tagger)
 
 
+
 -- SUBSCRIPTIONS
+
 
 type MidiSub msg
     = Listen String (Event -> msg)
@@ -60,7 +67,9 @@ listen tagger input =
     subscription (Listen input tagger)
 
 
+
 -- MANAGER
+
 
 type alias State msg =
     { access : Access msg
@@ -79,11 +88,12 @@ init =
     Task.succeed (State Unknown [])
 
 
+
 -- HANDLE APP MESSAGES
 
-{- Discards the result of a task and succeeds with a given value.
--}
-andThenReturn val t = Task.andThen (\_ -> Task.succeed val) t
+
+andThenReturn val t =
+    Task.andThen (\_ -> Task.succeed val) t
 
 
 onEffects : Platform.Router msg Msg -> List (MidiCmd msg) -> List (MidiSub msg) -> State msg -> Task Never (State msg)
@@ -98,16 +108,18 @@ runCommands router cmds state =
         [] ->
             Task.succeed state
 
-        Inputs tagger :: rest ->
+        (Inputs tagger) :: rest ->
             let
                 getInputs : Maybe LowLevel.MidiAccess -> List String
-                getInputs = Maybe.withDefault [] << Maybe.map inputNames
+                getInputs =
+                    Maybe.withDefault [] << Maybe.map inputNames
 
                 sendInputs : Maybe LowLevel.MidiAccess -> Task Never ()
-                sendInputs = Platform.sendToApp router << tagger << getInputs
+                sendInputs =
+                    Platform.sendToApp router << tagger << getInputs
             in
-                withAccess state router sendInputs
-                    |> Task.andThen (runCommands router rest)
+            withAccess state router sendInputs
+                |> Task.andThen (runCommands router rest)
 
 
 runSubscriptions : Platform.Router msg Msg -> List (MidiSub msg) -> State msg -> Task Never (State msg)
@@ -116,9 +128,10 @@ runSubscriptions router subs state =
         [] ->
             Task.succeed state
 
-        Listen name tagger :: rest ->
+        (Listen name tagger) :: rest ->
             let
-                listener event = Platform.sendToApp router (tagger event)
+                listener event =
+                    Platform.sendToApp router (tagger event)
 
                 getInput access =
                     List.head (List.filter (\i -> inputName i == name) (LowLevel.inputs access))
@@ -136,23 +149,28 @@ runSubscriptions router subs state =
                                 Just input ->
                                     LowLevel.listen input listener
             in
-                withAccess state router register
-                    |> Task.andThen (runSubscriptions router rest)
+            withAccess state router register
+                |> Task.andThen (runSubscriptions router rest)
 
 
 withAccess : State msg -> Platform.Router msg Msg -> (Maybe LowLevel.MidiAccess -> Task Never ()) -> Task Never (State msg)
 withAccess state router action =
     case state.access of
         Unknown ->
-            requestAccess router |> Task.andThen (\pid ->
-                Task.succeed { state |
-                    access = Requesting pid [action]
-                })
+            requestAccess router
+                |> Task.andThen
+                    (\pid ->
+                        Task.succeed
+                            { state
+                                | access = Requesting pid [ action ]
+                            }
+                    )
 
         Requesting pid pending ->
-            Task.succeed { state |
-                access = Requesting pid (action :: pending)
-            }
+            Task.succeed
+                { state
+                    | access = Requesting pid (action :: pending)
+                }
 
         Known access ->
             action access |> andThenReturn state
@@ -172,7 +190,7 @@ requestAccess router =
                 |> Task.andThen goodAccess
                 |> Task.onError badAccess
     in
-        Process.spawn attemptAccess
+    Process.spawn attemptAccess
 
 
 inputNames : LowLevel.MidiAccess -> List String
@@ -183,6 +201,7 @@ inputNames access =
 inputName : LowLevel.MidiInput -> String
 inputName =
     .name << LowLevel.portDetails << LowLevel.Input
+
 
 
 -- HANDLE SELF MESSAGES
@@ -203,6 +222,6 @@ onSelfMsg router selfMsg state =
                             Task.sequence (List.map (\action -> action access) pending)
 
                         _ ->
-                            Task.succeed [()]
+                            Task.succeed [ () ]
             in
-                runPending |> andThenReturn { state | access = Known access }
+            runPending |> andThenReturn { state | access = Known access }

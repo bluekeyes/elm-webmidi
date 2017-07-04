@@ -1,41 +1,50 @@
-module WebMidi.LowLevel exposing
-    ( MidiAccess
-    , Options
-    , MidiInput, MidiOutput, MidiPort(..), PortDetails
-    , DeviceState(..), ConnectionState(..)
-    , requestAccess
-    , portDetails
-    , inputs
-    , listen
-    , BadAccess(..)
-    )
-
+module WebMidi.LowLevel
+    exposing
+        ( BadAccess(..)
+        , ConnectionState(..)
+        , DeviceState(..)
+        , MidiAccess
+        , MidiInput
+        , MidiOutput
+        , MidiPort(..)
+        , Options
+        , PortDetails
+        , inputs
+        , listen
+        , portDetails
+        , requestAccess
+        )
 
 {-| Low-level access for the Web MIDI API.
 
+
 # Access
+
 @docs MidiAccess, Options, BadAccess
 
+
 # Ports
+
 @docs MidiInput, MidiOutput, MidiPort
 @docs PortDetails, DeviceState, ConnectionState
 
+
 # Functions
+
 @docs requestAccess, portDetails, inputs, listen
 
 -}
 
-
 import Array exposing (Array)
-import Task exposing (Task)
-
 import Native.WebMidi
+import Task exposing (Task)
 import WebMidi.Event exposing (Event)
 
 
 {-| Provides access to MIDI inputs and outputs.
 -}
-type MidiAccess = MidiAccess
+type MidiAccess
+    = MidiAccess
 
 
 {-| Requests access to MIDI functionality from the browser.
@@ -64,12 +73,17 @@ type alias Options =
 
 {-| The state of the MIDI device attached to a port.
 -}
-type DeviceState = Disconnected | Connected
+type DeviceState
+    = Disconnected
+    | Connected
 
 
 {-| The state of a connection on a MIDI port.
 -}
-type ConnectionState = Open | Closed | Pending
+type ConnectionState
+    = Open
+    | Closed
+    | Pending
 
 
 {-| Information about a MIDI port (input or output)
@@ -86,12 +100,14 @@ type alias PortDetails =
 
 {-| An opaque type for input ports.
 -}
-type MidiInput = MidiInput
+type MidiInput
+    = MidiInput
 
 
 {-| An opaque type for output ports.
 -}
-type MidiOutput = MidiOutput
+type MidiOutput
+    = MidiOutput
 
 
 {-| A MIDI port.

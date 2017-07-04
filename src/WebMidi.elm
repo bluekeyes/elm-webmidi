@@ -55,8 +55,8 @@ subMap func sub =
 
 {-| Listen for MIDI events on an input.
 -}
-listen : String -> (Event -> msg) -> Sub msg
-listen input tagger =
+listen : (Event -> msg) -> String -> Sub msg
+listen tagger input =
     subscription (Listen input tagger)
 
 
@@ -100,8 +100,11 @@ runCommands router cmds state =
 
         Inputs tagger :: rest ->
             let
-                getAndTagInputs = tagger << Maybe.withDefault [] << Maybe.map getInputNames
-                sendInputs = Platform.sendToApp router << getAndTagInputs
+                getInputs : Maybe LowLevel.MidiAccess -> List String
+                getInputs = Maybe.withDefault [] << Maybe.map inputNames
+
+                sendInputs : Maybe LowLevel.MidiAccess -> Task Never ()
+                sendInputs = Platform.sendToApp router << tagger << getInputs
             in
                 withAccess state router sendInputs
                     |> Task.andThen (runCommands router rest)
@@ -114,7 +117,27 @@ runSubscriptions router subs state =
             Task.succeed state
 
         Listen name tagger :: rest ->
-            Task.succeed state
+            let
+                listener event = Platform.sendToApp router (tagger event)
+
+                getInput access =
+                    List.head (List.filter (\i -> inputName i == name) (LowLevel.inputs access))
+
+                register maybeAccess =
+                    case maybeAccess of
+                        Nothing ->
+                            Task.succeed ()
+
+                        Just access ->
+                            case getInput access of
+                                Nothing ->
+                                    Task.succeed ()
+
+                                Just input ->
+                                    LowLevel.listen input listener
+            in
+                withAccess state router register
+                    |> Task.andThen (runSubscriptions router rest)
 
 
 withAccess : State msg -> Platform.Router msg Msg -> (Maybe LowLevel.MidiAccess -> Task Never ()) -> Task Never (State msg)
@@ -152,12 +175,14 @@ requestAccess router =
         Process.spawn attemptAccess
 
 
-getInputNames : LowLevel.MidiAccess -> List String
-getInputNames access =
-    let
-        getName input = (LowLevel.portDetails (LowLevel.Input input)) |> .name
-    in
-        List.map getName (LowLevel.inputs access)
+inputNames : LowLevel.MidiAccess -> List String
+inputNames access =
+    List.map inputName (LowLevel.inputs access)
+
+
+inputName : LowLevel.MidiInput -> String
+inputName =
+    .name << LowLevel.portDetails << LowLevel.Input
 
 
 -- HANDLE SELF MESSAGES

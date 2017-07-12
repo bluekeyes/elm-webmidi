@@ -9,6 +9,7 @@ module WebMidi.LowLevel
         , MidiPort(..)
         , Options
         , PortDetails
+        , close
         , inputs
         , listen
         , portDetails
@@ -31,7 +32,7 @@ module WebMidi.LowLevel
 
 # Functions
 
-@docs requestAccess, portDetails, inputs, listen
+@docs requestAccess, portDetails, inputs, listen, close
 
 -}
 
@@ -136,3 +137,10 @@ inputs =
 listen : MidiInput -> (Event -> Task Never ()) -> Task x ()
 listen =
     Native.WebMidi.listen
+
+
+{-| Closes a MIDI port.
+-}
+close : MidiPort -> Task x ()
+close =
+    Native.WebMidi.close

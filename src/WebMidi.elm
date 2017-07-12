@@ -14,7 +14,7 @@ effect module WebMidi
 
 -}
 
-import Maybe exposing (Maybe(..))
+import Dict exposing (Dict)
 import Process
 import Task exposing (Task)
 import WebMidi.Event exposing (Event)
@@ -71,13 +71,17 @@ listen tagger input =
 -- MANAGER
 
 
+type alias InputDict msg =
+    Dict String (List (Event -> msg))
+
+
 type alias State msg =
-    { access : Access msg
-    , inputs : List String
+    { access : Access
+    , inputs : InputDict msg
     }
 
 
-type Access msg
+type Access
     = Unknown
     | Requesting Process.Id (List (Maybe LowLevel.MidiAccess -> Task Never ()))
     | Known (Maybe LowLevel.MidiAccess)
@@ -85,7 +89,7 @@ type Access msg
 
 init : Task Never (State msg)
 init =
-    Task.succeed (State Unknown [])
+    Task.succeed (State Unknown Dict.empty)
 
 
 
@@ -124,33 +128,84 @@ runCommands router cmds state =
 
 runSubscriptions : Platform.Router msg Msg -> List (MidiSub msg) -> State msg -> Task Never (State msg)
 runSubscriptions router subs state =
-    case subs of
+    let
+        newInputs =
+            List.foldl addInput Dict.empty subs
+
+        left name taggers ( toClose, toOpen ) =
+            ( toClose, name :: toOpen )
+
+        both _ _ _ ( toClose, toOpen ) =
+            ( toClose, toOpen )
+
+        right name taggers ( toClose, toOpen ) =
+            ( name :: toClose, toOpen )
+
+        ( toClose, toOpen ) =
+            Dict.merge left both right newInputs state.inputs ( [], [] )
+
+        closeAndOpenInputs access =
+            closeInputs access toClose
+                |> Task.andThen (\_ -> openInputs router access toOpen)
+
+        action =
+            Maybe.withDefault (Task.succeed ()) << Maybe.map closeAndOpenInputs
+    in
+    withAccess state router action
+        |> Task.andThen (\newState -> Task.succeed { newState | inputs = newInputs })
+
+
+addInput : MidiSub msg -> InputDict msg -> InputDict msg
+addInput (Listen name tagger) state =
+    case Dict.get name state of
+        Nothing ->
+            Dict.insert name [ tagger ] state
+
+        Just taggers ->
+            Dict.insert name (tagger :: taggers) state
+
+
+closeInputs : LowLevel.MidiAccess -> List String -> Task x ()
+closeInputs access inputs =
+    case inputs of
         [] ->
-            Task.succeed state
+            Task.succeed ()
 
-        (Listen name tagger) :: rest ->
+        name :: rest ->
             let
-                listener event =
-                    Platform.sendToApp router (tagger event)
+                spawnClose =
+                    Process.spawn << LowLevel.close << LowLevel.Input
 
-                getInput access =
-                    List.head (List.filter (\i -> inputName i == name) (LowLevel.inputs access))
-
-                register maybeAccess =
-                    case maybeAccess of
-                        Nothing ->
-                            Task.succeed ()
-
-                        Just access ->
-                            case getInput access of
-                                Nothing ->
-                                    Task.succeed ()
-
-                                Just input ->
-                                    LowLevel.listen input listener
+                closeInput =
+                    Maybe.map spawnClose (findInput access name)
+                        |> Maybe.map (andThenReturn ())
+                        |> Maybe.withDefault (Task.succeed ())
             in
-            withAccess state router register
-                |> Task.andThen (runSubscriptions router rest)
+            closeInput
+                |> Task.andThen (\_ -> closeInputs access rest)
+
+
+openInputs : Platform.Router msg Msg -> LowLevel.MidiAccess -> List String -> Task x ()
+openInputs router access inputs =
+    case inputs of
+        [] ->
+            Task.succeed ()
+
+        name :: rest ->
+            let
+                listener =
+                    Platform.sendToSelf router << ReceiveEvent name
+
+                spawnOpen input =
+                    Process.spawn (LowLevel.listen input listener)
+
+                openInput =
+                    Maybe.map spawnOpen (findInput access name)
+                        |> Maybe.map (andThenReturn ())
+                        |> Maybe.withDefault (Task.succeed ())
+            in
+            openInput
+                |> Task.andThen (\_ -> openInputs router access rest)
 
 
 withAccess : State msg -> Platform.Router msg Msg -> (Maybe LowLevel.MidiAccess -> Task Never ()) -> Task Never (State msg)
@@ -203,12 +258,18 @@ inputName =
     .name << LowLevel.portDetails << LowLevel.Input
 
 
+findInput : LowLevel.MidiAccess -> String -> Maybe LowLevel.MidiInput
+findInput access name =
+    List.head (List.filter (\i -> inputName i == name) (LowLevel.inputs access))
+
+
 
 -- HANDLE SELF MESSAGES
 
 
 type Msg
     = ReceiveAccess (Maybe LowLevel.MidiAccess)
+    | ReceiveEvent String Event
 
 
 onSelfMsg : Platform.Router msg Msg -> Msg -> State msg -> Task Never (State msg)
@@ -225,3 +286,15 @@ onSelfMsg router selfMsg state =
                             Task.succeed [ () ]
             in
             runPending |> andThenReturn { state | access = Known access }
+
+        ReceiveEvent name event ->
+            case Dict.get name state.inputs of
+                Nothing ->
+                    Task.succeed state
+
+                Just taggers ->
+                    let
+                        notify =
+                            Task.sequence << List.map (\tagger -> Platform.sendToApp router (tagger event))
+                    in
+                    notify taggers |> andThenReturn state

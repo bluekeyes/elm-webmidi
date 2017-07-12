@@ -146,6 +146,20 @@ var _bluekeyes$elm_webmidi$Native_WebMidi = (function () {
     };
   }
 
+  function close(port) {
+    port = port._0
+    return _elm_lang$core$Native_Scheduler.nativeBinding(function (callback) {
+      port.close().then(
+        function () {
+          callback(_elm_lang$core$Native_Scheduler.succeed());
+        },
+        function () {
+          callback(_elm_lang$core$Native_Scheduler.fail());
+        }
+      );
+    });
+  }
+
   function inputs(access) {
     return _elm_lang$core$Native_List.fromArray(Array.from(access.inputs.values()));
   }
@@ -168,10 +182,11 @@ var _bluekeyes$elm_webmidi$Native_WebMidi = (function () {
   }
 
   return {
-    requestAccess: requestAccess,
-    portDetails: portDetails,
+    close: close,
     inputs: inputs,
     listen: F2(listen),
+    portDetails: portDetails,
+    requestAccess: requestAccess,
   };
 
 })();

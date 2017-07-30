@@ -1,16 +1,38 @@
 effect module WebMidi
     where { command = MidiCmd, subscription = MidiSub }
     exposing
-        ( inputs
+        ( checkAccess
+        , inputs
         , listen
         )
 
 {-| Send and receive MIDI messages.
 
+MIDI is the standard protocol used by music software and digital instruments to
+communicate. This module lets you interact with these devices from your web
+application, in [supported browsers](http://caniuse.com/#feat=midi).
 
-# Receiving MIDI
+It provides a simple interface for sending and receiving messages, which should
+support typical applications. Applications that need full access to the Web
+MIDI API should use lower-level module.
+
+
+# Errors
+
+To simplify the API, any errors encountered when opening ports or sending and
+receiving messages are silently discarded. In particular, this module will
+silently not work in browsers that do not support the Web MIDI API. Be sure to
+test for MIDI access before taking any actions if this is a problem.
+
+
+# Receiving Messages
 
 @docs inputs, listen
+
+
+# Testing For Access
+
+@docs checkAccess
 
 -}
 
@@ -26,6 +48,7 @@ import WebMidi.LowLevel as LowLevel
 
 type MidiCmd msg
     = Inputs (List String -> msg)
+    | CheckAccess (Bool -> msg)
 
 
 cmdMap : (a -> b) -> MidiCmd a -> MidiCmd b
@@ -33,6 +56,9 @@ cmdMap func cmd =
     case cmd of
         Inputs tagger ->
             Inputs (tagger >> func)
+
+        CheckAccess tagger ->
+            CheckAccess (tagger >> func)
 
 
 {-| Get the connected MIDI inputs.
@@ -43,6 +69,13 @@ If no inputs are connected or MIDI access is not available, the list is empty.
 inputs : (List String -> msg) -> Cmd msg
 inputs tagger =
     command (Inputs tagger)
+
+
+{-| Checks if MIDI access is available.
+-}
+checkAccess : (Bool -> msg) -> Cmd msg
+checkAccess tagger =
+    command (CheckAccess tagger)
 
 
 
@@ -61,6 +94,10 @@ subMap func sub =
 
 
 {-| Listen for MIDI events on an input.
+
+If the input is not connected or MIDI access is not available, no messages will
+be delivered for the subscription.
+
 -}
 listen : (Event -> msg) -> String -> Sub msg
 listen tagger input =
@@ -123,6 +160,17 @@ runCommands router cmds state =
                     Platform.sendToApp router << tagger << getInputs
             in
             withAccess state router sendInputs
+                |> Task.andThen (runCommands router rest)
+
+        (CheckAccess tagger) :: rest ->
+            let
+                hasAccess =
+                    Maybe.withDefault False << Maybe.map (always True)
+
+                checkAccess =
+                    Platform.sendToApp router << tagger << hasAccess
+            in
+            withAccess state router checkAccess
                 |> Task.andThen (runCommands router rest)
 
 

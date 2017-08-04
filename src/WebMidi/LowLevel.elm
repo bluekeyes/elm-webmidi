@@ -21,18 +21,25 @@ module WebMidi.LowLevel
 
 # Access
 
-@docs MidiAccess, Options, BadAccess
+@docs MidiAccess, Options
+@docs requestAccess, BadAccess
 
 
 # Ports
 
-@docs MidiInput, MidiOutput, MidiPort
-@docs PortDetails, DeviceState, ConnectionState
+@docs MidiPort, PortDetails, DeviceState, ConnectionState
+@docs portDetails, close
 
 
-# Functions
+# Inputs
 
-@docs requestAccess, portDetails, inputs, listen, close
+@docs MidiInput
+@docs inputs, listen
+
+
+# Outputs
+
+@docs MidiOutput
 
 -}
 
@@ -125,6 +132,13 @@ portDetails =
     Native.WebMidi.portDetails
 
 
+{-| Closes a MIDI port.
+-}
+close : MidiPort -> Task x ()
+close =
+    Native.WebMidi.close
+
+
 {-| Lists the available inputs.
 -}
 inputs : MidiAccess -> List MidiInput
@@ -137,10 +151,3 @@ inputs =
 listen : MidiInput -> (Event -> Task Never ()) -> Task x ()
 listen =
     Native.WebMidi.listen
-
-
-{-| Closes a MIDI port.
--}
-close : MidiPort -> Task x ()
-close =
-    Native.WebMidi.close

@@ -6,7 +6,7 @@ module WebMidi.Event
         , formatMessage
         )
 
-{-| Event type for the Web MIDI API.
+{-| Event types for the Web MIDI API.
 
 @docs Event, Channel, Message
 

@@ -1,7 +1,7 @@
 # WebMIDI
 
 The [WebMIDI API](https://webaudio.github.io/web-midi-api/) lets you access
-MIDI devices from the browser. This is an [Elm][https://elm-lang.org] library
+MIDI devices from the browser. This is an [Elm](https://elm-lang.org) library
 for using this API.
 
 It's compatible with Elm 0.18 and uses native and effect modules, so it works

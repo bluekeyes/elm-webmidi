@@ -1,3 +1,11 @@
+:warning: **This library is incomplete and unsupported!**
+
+_After working more with Elm, I've decided that it is not the right tool 
+for the application that originally led to this library. As a result, I
+won't be implementing output ports or fixing issues with the code. Feel
+free to create a fork if you'd like to continue development, but rumor has
+it that native and effect modules will be completely different in Elm 0.19._
+
 # WebMIDI
 
 The [WebMIDI API](https://webaudio.github.io/web-midi-api/) lets you access
